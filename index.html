@@ -2,8 +2,9 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>美股三大指数 Dashboard</title>
+  <title>美股三大指数</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
@@ -47,6 +48,11 @@
       font-size: 12px;
       color: #999;
     }
+    .error {
+      color: #b00020;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
   </style>
 </head>
 <body>
@@ -56,32 +62,56 @@
 <div id="grid" class="grid"></div>
 
 <script>
-const API_KEY = "a8c3e1f485f847bdbd17f6e6e7391ee8"; // ← 换成你的 Twelve Data key
+/* ===============================
+   配置区（只改 API_KEY）
+================================ */
+const API_KEY = "a8c3e1f485f847bdbd17f6e6e7391ee8"; // ← 换成你自己的
 const SYMBOLS = ["SPX", "NDX", "DJI"];
-const API_URL = `https://api.twelvedata.com/quote?symbol=${SYMBOLS.join(",")}&apikey=${API_KEY}`;
+const API_URL =
+  `https://api.twelvedata.com/quote?symbol=${SYMBOLS.join(",")}&apikey=${API_KEY}`;
 
+/* ===============================
+   工具函数
+================================ */
 function fmt(n) {
+  if (!isFinite(n)) return "—";
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function changeClass(v) {
-  if (v > 0) return "up";
-  if (v < 0) return "down";
-  return "flat";
+  if (!isFinite(v) || v === 0) return "flat";
+  return v > 0 ? "up" : "down";
 }
 
+/* ===============================
+   主逻辑
+================================ */
 async function loadData() {
+  const grid = document.getElementById("grid");
+
   try {
     const res = await fetch(API_URL);
     const data = await res.json();
 
-    const grid = document.getElementById("grid");
+    // ✅ 关键：处理 Twelve Data 限流 / 错误
+    if (data.status === "error") {
+      grid.innerHTML = `
+        <div class="card">
+          <div class="error">数据暂不可用</div>
+          <div style="font-size:14px;">${data.message}</div>
+          <div class="time">更新时间：${new Date().toLocaleString()}</div>
+        </div>
+      `;
+      return;
+    }
+
     grid.innerHTML = "";
 
     SYMBOLS.forEach(sym => {
       const q = data[sym];
       if (!q) return;
 
+      const close = Number(q.close);
       const change = Number(q.change);
       const pct = Number(q.percent_change);
 
@@ -90,32 +120,41 @@ async function loadData() {
 
       card.innerHTML = `
         <div class="symbol">${sym}</div>
-        <div class="price ${changeClass(change)}">
-          ${fmt(q.close)}
-        </div>
+        <div class="price ${changeClass(change)}">${fmt(close)}</div>
         <div class="${changeClass(change)}">
-          ${fmt(change)} (${pct.toFixed(2)}%)
+          ${fmt(change)} (${isFinite(pct) ? pct.toFixed(2) : "—"}%)
         </div>
 
-        <div class="row"><span>今开</span><span>${fmt(q.open)}</span></div>
-        <div class="row"><span>昨收</span><span>${fmt(q.previous_close)}</span></div>
-        <div class="row"><span>今高</span><span>${fmt(q.high)}</span></div>
-        <div class="row"><span>今低</span><span>${fmt(q.low)}</span></div>
+        <div class="row"><span>今开</span><span>${fmt(Number(q.open))}</span></div>
+        <div class="row"><span>昨收</span><span>${fmt(Number(q.previous_close))}</span></div>
+        <div class="row"><span>今高</span><span>${fmt(Number(q.high))}</span></div>
+        <div class="row"><span>今低</span><span>${fmt(Number(q.low))}</span></div>
 
         <div class="time">更新：${new Date().toLocaleString()}</div>
       `;
 
       grid.appendChild(card);
     });
-  } catch (e) {
-    console.error(e);
+
+  } catch (err) {
+    grid.innerHTML = `
+      <div class="card">
+        <div class="error">请求失败</div>
+        <div style="font-size:14px;">请检查网络或 API Key</div>
+      </div>
+    `;
+    console.error(err);
   }
 }
 
-// 初次加载 + 每 60 秒刷新
+/* ===============================
+   启动 & 刷新策略
+   免费档安全：3 分钟
+================================ */
 loadData();
-setInterval(loadData, 60000);
+setInterval(loadData, 180000); // 3 分钟
 </script>
 
 </body>
 </html>
+
